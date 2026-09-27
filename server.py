@@ -571,29 +571,54 @@ def _demo_pcm(prompt: str, seconds: float) -> bytes:
     return samples.tobytes()
 
 
-def _demo_wav(request_record: dict[str, Any], seconds: float, reason: str) -> Response:
-    pcm = _demo_pcm(request_record.get("prompt", ""), seconds)
-    total_ms = round(0.0, 1)
-    record = _save_output(
-        _wav_bytes(pcm, DEFAULT_SAMPLE_RATE, 1),
-        request_record,
-        sample_rate=DEFAULT_SAMPLE_RATE,
-        channels=1,
-        duration=len(pcm) / 2 / DEFAULT_SAMPLE_RATE,
-        demo=True,
-        total_ms=total_ms,
-    )
-    return Response(
-        content=_wav_bytes(pcm, DEFAULT_SAMPLE_RATE, 1),
-        media_type="audio/wav",
-        headers={
-            "X-SoundEffect-Demo": "1",
-            "X-SoundEffect-Warning": f"demo audio ({reason})".encode("ascii", "replace").decode("ascii"),
-            "X-SoundEffect-Mode": request_record["mode"],
-            "X-SoundEffect-Output": record["name"],
-            "X-SoundEffect-Sample-Rate": str(DEFAULT_SAMPLE_RATE),
-            "Cache-Control": "no-store",
+def _demo_wavs(request_record: dict[str, Any], seconds: float, reason: str) -> Response:
+    """Demo takes, one per caption, saved to the shelf and clearly labelled.
+
+    The response shape mirrors the real path exactly -- one WAV for a single
+    caption, a JSON document of base64 WAVs for a batch -- so the UI cannot
+    tell the two apart apart from the demo badge.
+    """
+    prompts: list[str] = request_record.get("prompts") or [request_record.get("prompt", "")]
+    wavs = [_demo_pcm(p, seconds) for p in prompts]
+    total_ms = 0.0
+    saved_names: list[str] = []
+    for index, pcm in enumerate(wavs):
+        record = _save_output(
+            _wav_bytes(pcm, DEFAULT_SAMPLE_RATE, 1),
+            {
+                **request_record,
+                "prompt": prompts[index],
+                "mode": "batch" if len(prompts) > 1 else "sfx",
+            },
+            sample_rate=DEFAULT_SAMPLE_RATE,
+            channels=1,
+            duration=len(pcm) / 2 / DEFAULT_SAMPLE_RATE,
+            demo=True,
+            total_ms=total_ms,
+            batch_index=index if len(wavs) > 1 else None,
+        )
+        saved_names.append(record["name"])
+
+    demo_headers = {
+        "X-SoundEffect-Demo": "1",
+        "X-SoundEffect-Warning": f"demo audio ({reason})".encode("ascii", "replace").decode("ascii"),
+        "X-SoundEffect-Mode": request_record["mode"],
+        "X-SoundEffect-Sample-Rate": str(DEFAULT_SAMPLE_RATE),
+        "Cache-Control": "no-store",
+    }
+    if len(wavs) == 1:
+        demo_headers["X-SoundEffect-Output"] = saved_names[0]
+        return Response(content=_wav_bytes(wavs[0], DEFAULT_SAMPLE_RATE, 1), media_type="audio/wav", headers=demo_headers)
+    demo_headers.pop("X-SoundEffect-Output", None)
+    return JSONResponse(
+        {
+            "count": len(wavs),
+            "sample_rate": DEFAULT_SAMPLE_RATE,
+            "saved": saved_names,
+            "elapsed_ms": total_ms,
+            "wavs_b64": [base64.b64encode(_wav_bytes(p, DEFAULT_SAMPLE_RATE, 1)).decode("ascii") for p in wavs],
         },
+        headers=demo_headers,
     )
 
 
@@ -660,7 +685,7 @@ async def _run_generation(
     # --demo short-circuits before the engine is ever touched: it exists so the
     # whole interface is explorable on a machine without the model.
     if settings.force_demo:
-        return _demo_wav(request_record, seconds, "demo mode was requested with --demo")
+        return _demo_wavs(request_record, seconds, "demo mode was requested with --demo")
 
     progress = _ProgressCapture(steps)
     global _CURRENT_PROGRESS
@@ -694,7 +719,7 @@ async def _run_generation(
         wavs, sample_rate, channels, duration = await run_in_threadpool(work)
     except HTTPException as exc:
         if exc.status_code == 503 and settings.auto_demo and not settings.force_demo:
-            return _demo_wav(request_record, seconds, "model not loaded")
+            return _demo_wavs(request_record, seconds, "model not loaded")
         raise
     finally:
         with _PROGRESS_LOCK:
