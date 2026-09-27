@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TostAI Sound Effect Studio</title>
+<link rel="icon" href="/static/favicon.ico" sizes="any" />
+<script>
+// The theme is resolved BEFORE the first paint, or a dark page flashes the light
+// palette and then repaints. A stored choice wins; with none, the OS decides.
+// styles.css carries the two palettes under the same variable names.
+(function () {
+  var t = null;
+  try { t = localStorage.getItem("tostai.sfx.theme"); } catch (e) { /* private mode */ }
+  if (t !== "light" && t !== "dark")
+    t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+})();
+</script>
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-icon" src="/static/logo.png" alt="" />
+    <div class="brand-text">
+      <h1>TostAI Sound Effect Studio</h1>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button id="status-badge" class="badge compact" type="button"
+            title="Checking the model…" aria-label="Model status">
+      <span class="dot"></span><span id="status-text" class="sr-only">checking…</span>
+    </button>
+    <span id="sample-rate-chip" class="chip">48 kHz · mono</span>
+    <button id="facts-button" class="chip ghost" type="button">Model facts</button>
+    <button id="update-button" class="chip ghost" type="button">Update</button>
+    <button id="theme-toggle" class="chip ghost" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ─────────────────────────── Composer ─────────────────────────── -->
+  <section class="panel composer">
+    <div class="field">
+      <div class="field-head">
+        <label for="prompt">Prompt — describe the sound</label>
+        <div class="field-head-right">
+          <div class="lang-toggle" id="lang-toggle" role="group" aria-label="Prompt language">
+            <button type="button" class="lang-btn is-active" data-lang="en">EN</button>
+            <button type="button" class="lang-btn" data-lang="zh">中文</button>
+          </div>
+          <span id="prompt-count" class="counter">0</span>
+        </div>
+      </div>
+      <textarea id="prompt" rows="5" spellcheck="false"
+        placeholder="Describe the sound effect — environment, creature, action…"></textarea>
+      <div class="chips" id="quick-chips" aria-label="Quick prompts"></div>
+    </div>
+
+    <div class="field" id="batch-field" hidden>
+      <div class="field-head">
+        <label for="batch">Batch — one caption per line</label>
+        <span class="tag" id="batch-count">0 captions</span>
+      </div>
+      <textarea id="batch" rows="6" spellcheck="false"
+        placeholder="Rain on a tin roof&#10;Wind chimes in a storm&#10;A wolf howling far away"></textarea>
+    </div>
+
+    <div class="field">
+      <div class="field-head">
+        <label for="negative">Negative prompt <span class="muted">(steered by CFG)</span></label>
+      </div>
+      <input id="negative" type="text" spellcheck="false"
+        placeholder="Leave empty for the model default" />
+      <div class="chips" id="negative-chips" aria-label="Negative presets"></div>
+    </div>
+
+    <div class="field">
+      <div class="field-head">
+        <label>Prompt presets</label>
+        <button id="mode-toggle" class="link" type="button">switch to batch</button>
+      </div>
+      <div class="chips presets" id="preset-chips"></div>
+    </div>
+
+    <details class="advanced" id="advanced">
+      <summary>Sampling controls</summary>
+      <div class="advanced-grid">
+        <div class="mini-field">
+          <label for="seconds">Duration <span id="seconds-value" class="mono">10.0 s</span></label>
+          <input id="seconds" type="range" min="0.5" max="30" step="0.5" value="10" />
+          <small id="seconds-note">Cropped from a fixed 30 s latent; the value is written into the prompt.</small>
+        </div>
+        <div class="mini-field">
+          <label for="seed">Seed</label>
+          <div class="row">
+            <input id="seed" type="number" value="0" min="0" step="1" />
+            <button id="seed-random" class="ghost small" type="button">🎲</button>
+          </div>
+        </div>
+        <div class="mini-field">
+          <label for="steps">Inference steps <span id="steps-value" class="mono">100</span></label>
+          <input id="steps" type="range" min="10" max="150" step="1" value="100" />
+          <small>Flow-match solver steps — more is slower and cleaner.</small>
+        </div>
+        <div class="mini-field">
+          <label for="cfg">CFG scale <span id="cfg-value" class="mono">4.0</span></label>
+          <input id="cfg" type="range" min="1" max="8" step="0.1" value="4" />
+          <small>1.0 disables guidance and ignores the negative prompt.</small>
+        </div>
+        <div class="mini-field">
+          <label for="sigma">Sigma shift <span id="sigma-value" class="mono">5.0</span></label>
+          <input id="sigma" type="range" min="0" max="10" step="0.1" value="5" />
+          <small>Flow-match scheduler shift, applied per call.</small>
+        </div>
+        <label class="switch">
+          <input id="duration-tag" type="checkbox" checked />
+          <span class="track"><span class="thumb"></span></span>
+          <span>Append the <code>duration: Xs</code> tag</span>
+        </label>
+        <label class="switch">
+          <input id="keep-take" type="checkbox" checked />
+          <span class="track"><span class="thumb"></span></span>
+          <span>Save every take to the output folder</span>
+        </label>
+      </div>
+      <div class="fast-panel">
+        <div class="fast-head">
+          <strong>Every pipeline capability</strong>
+          <span class="muted">what this app forwards to <code>MossSoundEffectPipeline.__call__</code></span>
+        </div>
+        <ul id="param-docs"></ul>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button id="generate" class="primary" type="button">
+        <span class="spinner" id="spinner" hidden></span>
+        <span id="generate-label">Generate sound</span>
+      </button>
+      <button id="cancel" class="ghost" type="button" hidden>Cancel</button>
+      <button id="reset" class="ghost" type="button">Reset</button>
+    </div>
+    <div class="progress-wrap" id="progress-wrap" hidden>
+      <div class="progress-row">
+        <span id="progress-text" class="mono">step 0 / 100</span>
+        <span id="progress-eta" class="mono"></span>
+      </div>
+      <progress id="progress" max="100" value="0"></progress>
+    </div>
+    <p class="error" id="error" hidden></p>
+    <p class="license">Model: MOSS-SoundEffect v2.0 (Apache-2.0). Duration and tag follow the training convention.</p>
+  </section>
+
+  <!-- ─────────────────────────── Studio ─────────────────────────── -->
+  <section class="panel studio">
+    <div class="stage">
+      <canvas id="viz" class="viz"></canvas>
+      <div class="stage-overlay" id="stage-overlay">
+        <div class="stage-idle">Your generated sound will appear here</div>
+      </div>
+    </div>
+
+    <div class="player">
+      <button id="play" class="play" type="button" disabled aria-label="Play">▶</button>
+      <div class="player-body">
+        <div class="scrub-row">
+          <span class="mono time" id="time-current">0:00</span>
+          <input id="scrubber" type="range" min="0" max="1000" value="0" step="1" disabled />
+          <span class="mono time" id="time-total">0:00</span>
+        </div>
+        <div class="meta" id="meta">
+          <span class="tag" id="meta-mode">—</span>
+          <span class="tag" id="meta-params">—</span>
+          <span class="tag demo" id="meta-demo" hidden>demo audio · model offline</span>
+        </div>
+      </div>
+      <div class="player-actions">
+        <button id="download-wav" class="ghost small" type="button" disabled>WAV</button>
+        <button id="loop" class="ghost small" type="button" disabled>Loop</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><span class="stat-label">Generation time</span><span class="stat-value mono" id="stat-total">—</span></div>
+      <div class="stat"><span class="stat-label">Real-time factor</span><span class="stat-value mono" id="stat-rtf">—</span></div>
+      <div class="stat"><span class="stat-label">Audio length</span><span class="stat-value mono" id="stat-length">—</span></div>
+      <div class="stat"><span class="stat-label">Steps run</span><span class="stat-value mono" id="stat-steps">—</span></div>
+    </div>
+
+    <div class="history-head">
+      <div>
+        <h2>Takes</h2>
+        <span class="folder" id="outputs-dir">saving to outputs/</span>
+      </div>
+      <button id="refresh-outputs" class="ghost small" type="button">Refresh</button>
+    </div>
+    <div class="history" id="history">
+      <p class="empty">Nothing yet — generate a sound to fill this shelf.</p>
+    </div>
+  </section>
+</main>
+
+<dialog id="facts-dialog" class="facts">
+  <button id="facts-close" class="close" type="button" aria-label="Close">✕</button>
+  <h2>MOSS-SoundEffect v2.0</h2>
+  <div id="facts-body"></div>
+</dialog>
+
+<!-- Update dialog. The source repository is public, so the update needs no
+     credential -- the button below just fetches the latest source. -->
+<dialog id="update-dialog" class="facts">
+  <button id="update-close" class="close" type="button" aria-label="Close">✕</button>
+  <h2>Update studio</h2>
+  <div class="hint" id="update-rev"></div>
+  <div class="hint">source: <a id="update-src" href="https://github.com/camenduru/TostAI-Sound-Effect-Studio" target="_blank" rel="noopener">camenduru/TostAI-Sound-Effect-Studio</a></div>
+  <div class="hint">Pulls the latest source from the public GitHub repository
+    and restarts this server. Nothing leaves this machine.</div>
+  <div id="update-msg" class="upd-msg"></div>
+  <div class="upd-row">
+    <button id="update-cancel" class="ghost" type="button">Cancel</button>
+    <button id="update-go" class="primary" type="button">Update &amp; restart</button>
+  </div>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Build context
+# ---------------------------------------------------------------------------
+# The Dockerfile reads exactly ONE file from the context: docker_selfcheck.py,
+# the build-time proof. Everything else the image contains -- the model code,
+# the studio itself and the ~10.5 GB of weights -- is fetched over the network
+# during the build (the studio is cloned from
+# github.com/camenduru/TostAI-Sound-Effect-Studio).
+#
+# So: keep the build-time proof and drop everything else, which is either a
+# local artifact or a copy of something the build downloads anyway.
+#
+# .env is the entry that would actually MATTER. It can hold HF_TOKEN, and the
+# build context is uploaded to whatever builder is in use unless it is excluded
+# here. A secret does not need to be in the context to be usable --
+# `--secret ...,env=` reads it from the CALLER's environment instead. BuildKit
+# warns when a secret is passed as ARG or ENV; it cannot warn about a file you
+# forgot to ignore.
+.env
+.env.*
+
+# The virtualenv is the one that would actually hurt: this checkout layers the
+# model venv under .venv/ for local runs, and BuildKit would have to hash and
+# transfer every file of it on every build. The image builds its own venv.
+.venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+
+# Local audio the app wrote while being developed.
+*.wav
+*.pcm
+outputs/
+!outputs/.gitkeep
+
+# The studio's own source. It comes from the git clone, not the context, so
+# uploading it here would only slow the build down.
+server.py
+smoke_generate.py
+docker-entrypoint.sh
+static/
+requirements.txt
+
+# Not read at runtime; the README is documentation for the host checkout.
+README.md
+
+.git/
+.gitignore
+Dockerfile
+.dockerignore
