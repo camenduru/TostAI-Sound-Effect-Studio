@@ -22,3 +22,5 @@ outputs/*
 
 *.wav
 *.pcm
+*.log
+*.txt
