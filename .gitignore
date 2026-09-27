@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .ruff_cache/
+.freebuff/
 
 # `.env` holds HF_TOKEN, which the Docker build consumes via
 # `--secret id=hf_token,env=HF_TOKEN`. It is a FILE -- the .venv/ entry above is

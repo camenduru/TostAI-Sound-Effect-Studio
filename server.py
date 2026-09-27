@@ -84,8 +84,11 @@ MOSS_VENV_DIR = Path(
 
 settings = SimpleNamespace(
     # Docker layout: one venv holds everything and the checkout sits at
-    # /app/MOSS-TTS. Locally MOSS_CODE_DIR above wins when it exists.
-    model_dir=Path(os.environ.get("SOUNDEFFECT_MODEL_DIR") or "OpenMOSS-Team/MOSS-SoundEffect-v2.0"),
+    # /app/MOSS-SoundEffect-v2.0. A plain repo id or a local dir both work:
+    # the pipeline's from_pretrained resolves them. Kept as a STRING, not a
+    # Path -- Path() would rewrite "OpenMOSS-Team/MOSS-SoundEffect-v2.0" into
+    # a backslash form that huggingface_hub rejects as a repo id.
+    model_dir=os.environ.get("SOUNDEFFECT_MODEL_DIR") or "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
     device=os.environ.get("SOUNDEFFECT_DEVICE") or "auto",
     force_demo=False,
     auto_demo=True,
@@ -133,7 +136,8 @@ def _read_model_index(path: Path) -> dict[str, Any]:
 
 
 def _model_facts() -> dict[str, Any]:
-    index = _read_model_index(settings.model_dir)
+    local_dir = Path(settings.model_dir)
+    index = _read_model_index(local_dir) if local_dir.is_dir() else {}
     return {
         "name": "MOSS-SoundEffect v2.0",
         "model_dir": str(settings.model_dir),
@@ -1141,7 +1145,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.model:
-        settings.model_dir = Path(args.model)
+        settings.model_dir = args.model
         refreshed = _model_facts()
         MODEL_FACTS.clear()
         MODEL_FACTS.update(refreshed)
