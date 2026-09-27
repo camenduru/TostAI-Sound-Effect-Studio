@@ -10,6 +10,8 @@ __pycache__/
 # per-machine variants, so a token never reaches the repository.
 .env
 .env.*
+headers*.txt
+*.hdr
 
 # Every take the app writes is runtime data, not source. Both the WAVs and
 # their JSON sidecars are ignored; .gitkeep holds the folder itself.

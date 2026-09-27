@@ -82,7 +82,11 @@
 # the first generation would die inside a TorchDynamo error. The env var is
 # what the bundled `infer_from_pipeline.sh` exports for the same reason.
 # ===========================================================================
-FROM ubuntu:22.04
+# 24.04, not 22.04: moss_soundeffect_v2 requires python >= 3.12, and 22.04's
+# python3 is 3.10 -- a `python3.12` package does not exist in its archive at
+# all. 24.04 ships python3 = 3.12 natively, which is exactly what upstream
+# pins.
+FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.title="TostAI Sound Effect Studio" \
       org.opencontainers.image.description="Web app for MOSS-SoundEffect v2.0: text-to-sound effects with duration, CFG, negative prompt, sigma shift, seed and batch control." \
@@ -105,7 +109,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # is ~200 MB of compiler nobody uses at runtime.
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.12 python3.12-venv python3.12-dev \
+        python3 python3-venv python3-dev \
         git git-lfs curl ca-certificates ffmpeg \
         tini \
     && rm -rf /var/lib/apt/lists/* \
@@ -120,7 +124,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # model's pins and the studio's four web dependencies, so no sys.path layering
 # happens here.
 # ---------------------------------------------------------------------------
-RUN python3.12 -m venv /opt/venv \
+RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip
 
 ENV PATH="/opt/venv/bin:${PATH}" \
