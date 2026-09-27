@@ -5,6 +5,8 @@
 
 #### 🍞 Tost AI - Sound Effect Studio
 
+<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/bb642aca-08fa-4daa-962b-409244bb42e7" />
+
 A web app for **MOSS-SoundEffect v2.0** that exposes every capability the
 model has — text-to-sound in English and Chinese, duration up to 30 s with the
 training-time duration tag, flow-matching sampling control (steps, CFG,
